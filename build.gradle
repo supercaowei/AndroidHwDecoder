@@ -19,6 +19,9 @@ allprojects {
     repositories {
         google()
         jcenter()
+        maven {
+            url "https://maven.byted.org/nexus/content/repositories/ugc_android/"
+        }
     }
 }
 
