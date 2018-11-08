@@ -14,16 +14,13 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 
-import com.ss.avframework.simpledecoder.Mp4AsyncDecoder;
-import com.ss.avframework.simpledecoder.Mp4SyncDecoder;
+import com.ss.avframework.simpledecoder.Mp4Decoder;
 
 public class Mp4DecodeTest extends AppCompatActivity {
 
     public final String TAG = "Mp4DecodeTest";
 
-    private Mp4AsyncDecoder mMp4AsyncDecoder;
-    private Mp4SyncDecoder mMp4SyncDecoder;
-
+    private Mp4Decoder mMp4Decoder;
 
     @Override
     public void onCreate(Bundle savedInstanceState)
@@ -55,17 +52,16 @@ public class Mp4DecodeTest extends AppCompatActivity {
             public void onClick(View v) {
                 SurfaceView surfaceView = (SurfaceView)findViewById(R.id.surfaceView);
                 EditText edit = (EditText)findViewById(R.id.editext);
-                //mMp4AsyncDecoder = new Mp4AsyncDecoder(edit.getText().toString(), Mp4DecodeTest.this, surfaceView.getHolder().getSurface());
-                mMp4SyncDecoder = new Mp4SyncDecoder(edit.getText().toString(), Mp4DecodeTest.this, surfaceView.getHolder().getSurface());
-                Log.i(TAG, "Mp4AsyncDecoder created.");
+                mMp4Decoder = new Mp4Decoder(edit.getText().toString(), true, surfaceView.getHolder().getSurface(), null, null);
+                Log.i(TAG, "MP4 decoder created.");
             }
         });
     }
 
     @Override
     public void onDestroy() {
-        if (mMp4SyncDecoder != null) {
-            mMp4SyncDecoder.stop();
+        if (mMp4Decoder != null) {
+            mMp4Decoder.stop();
         }
         super.onDestroy();
     }
