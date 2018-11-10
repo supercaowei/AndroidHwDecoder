@@ -9,6 +9,8 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.Surface;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
@@ -16,11 +18,14 @@ import android.widget.EditText;
 
 import com.ss.avframework.simpledecoder.Mp4Decoder;
 
-public class Mp4DecodeTest extends AppCompatActivity {
+public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Callback {
 
     public final String TAG = "Mp4DecodeTest";
 
     private Mp4Decoder mMp4Decoder;
+    private Surface mSurface;
+    private String mMediaFilePath;
+    private boolean started = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState)
@@ -33,27 +38,81 @@ public class Mp4DecodeTest extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 18888);
         }
 
-        Button chooseFile = (Button)findViewById(R.id.button1);
+        final Button chooseFile = (Button)findViewById(R.id.btn_select_file);
+        final Button startDecode = (Button)findViewById(R.id.btn_start_decode);
+        final Button stopDecode = (Button)findViewById(R.id.btn_stop_decode);
+        final Button pause = (Button)findViewById(R.id.btn_pause);
+        final Button resume = (Button)findViewById(R.id.btn_resume);
+        final SurfaceView surfaceView = (SurfaceView)findViewById(R.id.surfaceView);
+        surfaceView.getHolder().addCallback(this);
+
         chooseFile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent();
-                intent.setType("*/*");
+                intent.setType("video/*;audio/*");
                 intent.setAction(Intent.ACTION_GET_CONTENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 startActivityForResult(intent, 1);
             }
         });
 
-
-        Button startDecode = (Button)findViewById(R.id.button);
         startDecode.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                SurfaceView surfaceView = (SurfaceView)findViewById(R.id.surfaceView);
                 EditText edit = (EditText)findViewById(R.id.editext);
-                mMp4Decoder = new Mp4Decoder(edit.getText().toString(), true, surfaceView.getHolder().getSurface(), null, null);
-                Log.i(TAG, "MP4 decoder created.");
+                mMediaFilePath = edit.getText().toString();
+                if (mMediaFilePath.isEmpty() || mSurface == null) {
+                    return;
+                }
+                mMp4Decoder = new Mp4Decoder(null, null);
+                mMp4Decoder.start(mMediaFilePath, true, mSurface);
+                started = true;
+                Log.i(TAG, "MP4 decoding started.");
+                startDecode.setEnabled(false);
+                stopDecode.setEnabled(true);
+                pause.setEnabled(true);
+                resume.setEnabled(false);
+            }
+        });
+
+        stopDecode.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mMp4Decoder != null) {
+                    mMp4Decoder.stop();
+                    mMp4Decoder = null;
+                    started = false;
+                    Log.i(TAG, "MP4 decoding stopped.");
+                    startDecode.setEnabled(true);
+                    stopDecode.setEnabled(false);
+                    pause.setEnabled(false);
+                    resume.setEnabled(false);
+                }
+            }
+        });
+
+        pause.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mMp4Decoder != null) {
+                    mMp4Decoder.pause();
+                    Log.i(TAG, "MP4 decoding paused.");
+                    pause.setEnabled(false);
+                    resume.setEnabled(true);
+                }
+            }
+        });
+
+        resume.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mMp4Decoder != null) {
+                    mMp4Decoder.resume();
+                    Log.i(TAG, "MP4 decoding resumed.");
+                    pause.setEnabled(true);
+                    resume.setEnabled(false);
+                }
             }
         });
     }
@@ -62,6 +121,8 @@ public class Mp4DecodeTest extends AppCompatActivity {
     public void onDestroy() {
         if (mMp4Decoder != null) {
             mMp4Decoder.stop();
+            mMp4Decoder = null;
+            started = false;
         }
         super.onDestroy();
     }
@@ -71,7 +132,6 @@ public class Mp4DecodeTest extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (resultCode == RESULT_OK) {
@@ -80,5 +140,42 @@ public class Mp4DecodeTest extends AppCompatActivity {
             EditText edit = (EditText)findViewById(R.id.editext);
             edit.setText(path);
         }
+    }
+
+    @Override
+    public void surfaceCreated(SurfaceHolder surfaceHolder) {
+        mSurface = surfaceHolder.getSurface();
+        if (mMp4Decoder != null && started) {
+            mMp4Decoder.resetSurface(mSurface);
+        }
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height) {
+        mSurface = surfaceHolder.getSurface();
+        if (mMp4Decoder != null && started) {
+            mMp4Decoder.resetSurface(mSurface);
+        }
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
+
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (mMp4Decoder != null) {
+            mMp4Decoder.pause();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        if (mMp4Decoder != null) {
+            mMp4Decoder.resume();
+        }
+        super.onResume();
     }
 }
