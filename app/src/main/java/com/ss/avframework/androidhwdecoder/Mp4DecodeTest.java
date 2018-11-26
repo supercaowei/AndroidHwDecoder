@@ -18,7 +18,9 @@ import android.widget.EditText;
 
 import com.ss.avframework.simpledecoder.Mp4Decoder;
 
-public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Callback {
+import java.nio.ByteBuffer;
+
+public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Callback, Mp4Decoder.IVideoFrameListener, Mp4Decoder.IAudioSampleListener {
 
     public final String TAG = "Mp4DecodeTest";
 
@@ -36,6 +38,10 @@ public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Ca
         int permission = ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE);
         if (permission != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 18888);
+        }
+        permission = ActivityCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if (permission != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 18888);
         }
 
         final Button chooseFile = (Button)findViewById(R.id.btn_select_file);
@@ -65,7 +71,7 @@ public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Ca
                 if (mMediaFilePath.isEmpty() || mSurface == null) {
                     return;
                 }
-                mMp4Decoder = new Mp4Decoder(null, null);
+                mMp4Decoder = new Mp4Decoder(Mp4DecodeTest.this, Mp4DecodeTest.this);
                 mMp4Decoder.start(mMediaFilePath, true, mSurface);
                 started = true;
                 Log.i(TAG, "MP4 decoding started.");
@@ -177,5 +183,15 @@ public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Ca
             mMp4Decoder.resume();
         }
         super.onResume();
+    }
+
+    @Override
+    public void onVideoFrameDecoded(int textureId, int width, int height, int colorFormat, long timestampMs) {
+
+    }
+
+    @Override
+    public void onAudioSampleDecoded(ByteBuffer data, int sampleRate, int channelCount, int bitsPerSample, int sampleCount, long timestampMs) {
+
     }
 }
