@@ -166,22 +166,24 @@ public class Mp4DecodeTest extends AppCompatActivity implements SurfaceHolder.Ca
 
     @Override
     public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
-
+        if (mMp4Decoder != null && started) {
+            mMp4Decoder.resetSurface(null);
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        if (mMp4Decoder != null) {
-            mMp4Decoder.pause();
-        }
+//        if (mMp4Decoder != null) {
+//            mMp4Decoder.pause();
+//        }
     }
 
     @Override
     public void onResume() {
-        if (mMp4Decoder != null) {
-            mMp4Decoder.resume();
-        }
+//        if (mMp4Decoder != null) {
+//            mMp4Decoder.resume();
+//        }
         super.onResume();
     }
 

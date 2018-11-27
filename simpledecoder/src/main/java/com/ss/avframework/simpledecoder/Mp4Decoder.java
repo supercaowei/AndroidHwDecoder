@@ -30,6 +30,8 @@ import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.egl.EGLDisplay;
 import javax.microedition.khronos.egl.EGLSurface;
 
+import static javax.microedition.khronos.egl.EGL10.EGL_NATIVE_VISUAL_ID;
+
 public class Mp4Decoder {
 
     public final String TAG = "Mp4Decoder";
@@ -90,9 +92,9 @@ public class Mp4Decoder {
         return ret;
     }
 
-    //size[0] width, size[1] height
-    public static boolean GetVideoSizeFromFile(String videoFilePath, int[] size) {
-        if (size.length < 2) {
+    //info[0] width, info[1] height, info[2] fps
+    public static boolean GetVideoInfoFromFile(String videoFilePath, int[] info) {
+        if (info.length < 3) {
             return false;
         }
         try {
@@ -102,14 +104,15 @@ public class Mp4Decoder {
                 MediaFormat format = extractor.getTrackFormat(i);
                 String mime = format.getString(MediaFormat.KEY_MIME);
                 if (mime.compareTo(MediaFormat.MIMETYPE_VIDEO_AVC) == 0) {
-                    size[0] = format.getInteger(MediaFormat.KEY_WIDTH);
+                    info[0] = format.getInteger(MediaFormat.KEY_WIDTH);
                     if (format.containsKey("crop-left") && format.containsKey("crop-right")) {
-                        size[0] = format.getInteger("crop-right") + 1 - format.getInteger("crop-left");
+                        info[0] = format.getInteger("crop-right") + 1 - format.getInteger("crop-left");
                     }
-                    size[1] = format.getInteger(MediaFormat.KEY_HEIGHT);
+                    info[1] = format.getInteger(MediaFormat.KEY_HEIGHT);
                     if (format.containsKey("crop-top") && format.containsKey("crop-bottom")) {
-                        size[1] = format.getInteger("crop-bottom") + 1 - format.getInteger("crop-top");
+                        info[1] = format.getInteger("crop-bottom") + 1 - format.getInteger("crop-top");
                     }
+                    info[2] = format.getInteger(MediaFormat.KEY_FRAME_RATE);
                     return true;
                 }
             }
@@ -221,9 +224,6 @@ public class Mp4Decoder {
 
     public void resetSurface(Surface surface) {
         mDisplaySurface = surface;
-//        if (mVideoDecoder != null && !stopped) {
-//            mVideoDecoder.setOutputSurface(mDisplaySurface);
-//        }
     }
 
     private void DemuxMp4() throws Exception {
@@ -296,7 +296,7 @@ public class Mp4Decoder {
             int trackIndex = mExtractor.getSampleTrackIndex();
             long ptsUs = mExtractor.getSampleTime();
             if (trackIndex == videoTrackId) {
-                Log.i(TAG, "Video sample: size " + sampleSize + " bytes, pts " + (ptsUs / 1000) + "ms");
+                Log.d(TAG, "Video sample: size " + sampleSize + " bytes, pts " + (ptsUs / 1000) + "ms");
                 while (videoBufferList.size() >= maxVideoBufferCount && !stopped) {
                     Thread.sleep(10);
                 }
@@ -311,7 +311,7 @@ public class Mp4Decoder {
                     videoBufferList.add(packet);
                 }
             } else if (trackIndex == audioTrackId) {
-                Log.i(TAG, "Audio sample: size " + sampleSize + " bytes, pts " + (ptsUs / 1000) + "ms");
+                Log.d(TAG, "Audio sample: size " + sampleSize + " bytes, pts " + (ptsUs / 1000) + "ms");
                 while (audioBufferList.size() >= maxAudioBufferCount && !stopped) {
                     Thread.sleep(10);
                 }
@@ -326,7 +326,7 @@ public class Mp4Decoder {
                     audioBufferList.add(packet);
                 }
             } else {
-                Log.i(TAG, "Unknown track id: " + trackIndex);
+                Log.w(TAG, "Unknown track id: " + trackIndex);
             }
             mExtractor.advance();
         }
@@ -445,7 +445,7 @@ public class Mp4Decoder {
 
                     inputBuffer.put(packet.data, 0, packet.data.length);
                     mVideoDecoder.queueInputBuffer(inputBufferIndex, 0, packet.data.length, packet.ptsUs, 0);
-                    Log.i(TAG, "Video input: buffer index " + inputBufferIndex + ", buffer size " + packet.data.length + ", pts " + (packet.ptsUs / 1000) + "ms");
+                    Log.d(TAG, "Video input: buffer index " + inputBufferIndex + ", buffer size " + packet.data.length + ", pts " + (packet.ptsUs / 1000) + "ms");
                 }
             }
         }
@@ -470,15 +470,16 @@ public class Mp4Decoder {
 
                     inputBuffer.put(packet.data, 0, packet.data.length);
                     mAudioDecoder.queueInputBuffer(inputBufferIndex, 0, packet.data.length, packet.ptsUs, 0);
-                    Log.i(TAG, "Audio input: buffer index " + inputBufferIndex + ", buffer size " + packet.data.length + ", pts " + (packet.ptsUs / 1000) + "ms");
+                    Log.d(TAG, "Audio input: buffer index " + inputBufferIndex + ", buffer size " + packet.data.length + ", pts " + (packet.ptsUs / 1000) + "ms");
                 }
             }
         }
         Log.i(TAG, "AudioDecoderInput thread exit");
     }
 
+    @TargetApi(Build.VERSION_CODES.M)
     private void VideoDecoderOutput() throws Exception {
-        mOutputSurface = new CodecOutputSurface(mVideoMediaFormat.getInteger(MediaFormat.KEY_WIDTH), mVideoMediaFormat.getInteger(MediaFormat.KEY_HEIGHT));
+        mOutputSurface = new CodecOutputSurface(mVideoMediaFormat.getInteger(MediaFormat.KEY_WIDTH), mVideoMediaFormat.getInteger(MediaFormat.KEY_HEIGHT), mDisplaySurface);
 
         String mime = mVideoMediaFormat.getString(MediaFormat.KEY_MIME);
         mVideoDecoder = MediaCodec.createDecoderByType(mime);
@@ -508,6 +509,12 @@ public class Mp4Decoder {
 //        int saveLimit = 10;
 
         while (!stopped) {
+            if (mOutputSurface.getDisplaySurface() != mDisplaySurface) {
+                mOutputSurface.release();
+                mOutputSurface = null;
+                mOutputSurface = new CodecOutputSurface(mVideoMediaFormat.getInteger(MediaFormat.KEY_WIDTH), mVideoMediaFormat.getInteger(MediaFormat.KEY_HEIGHT), mDisplaySurface);
+                mVideoDecoder.setOutputSurface(mOutputSurface.getSurface());
+            }
             if (paused) {
                 Thread.sleep(10);
                 videoClock.sysTimeMs = System.currentTimeMillis();
@@ -526,7 +533,7 @@ public class Mp4Decoder {
                 }
                 ByteBuffer outputBuffer = mVideoDecoder.getOutputBuffer(outputBufferIndex);
                 final MediaFormat videoOutputFmt = mVideoDecoder.getOutputFormat(outputBufferIndex);
-                Log.i(TAG, "Video output: size " + info.size + ", pts " + (info.presentationTimeUs / 1000) + "ms, buffer size " + outputBuffer.remaining());
+                Log.d(TAG, "Video output: size " + info.size + ", pts " + (info.presentationTimeUs / 1000) + "ms, buffer size " + outputBuffer.remaining());
                 outputBuffer.position(0);
                 outputBuffer.clear();
                 mVideoDecoder.releaseOutputBuffer(outputBufferIndex, true);
@@ -629,7 +636,7 @@ public class Mp4Decoder {
                 }
                 ByteBuffer outputBuffer = mAudioDecoder.getOutputBuffer(outputBufferIndex);
                 final MediaFormat audioOutputFmt = mAudioDecoder.getOutputFormat(outputBufferIndex);
-                Log.i(TAG, "Audio output: size " + info.size + ", pts " + (info.presentationTimeUs / 1000) + "ms, buffer size " + outputBuffer.remaining());
+                Log.d(TAG, "Audio output: size " + info.size + ", pts " + (info.presentationTimeUs / 1000) + "ms, buffer size " + outputBuffer.remaining());
                 if (mAudioSampleListener != null) {
                     int channelCount = audioOutputFmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
                     int sampleCount = info.size / (16 / 8);
@@ -697,7 +704,7 @@ public class Mp4Decoder {
         }
         long sleepMs = (ptsUs - primaryClock.ptsUs) / 1000 - (sysTimeMs - primaryClock.sysTimeMs);
         if (sleepMs > 0) { //It's not time for rendering this frame, sleep for a while
-            Log.e(TAG, "sleepMs " + sleepMs);
+            Log.d(TAG, "sleepMs " + sleepMs);
             Thread.sleep(sleepMs);
         } //else { // render this frame immediately }
         currentClock.sysTimeMs = primaryClock.sysTimeMs + (ptsUs - primaryClock.ptsUs) / 1000;
@@ -743,12 +750,13 @@ public class Mp4Decoder {
         private STextureRender mTextureRender;
         private SurfaceTexture mSurfaceTexture;
         private Surface mSurface;
+        private Surface mDisplaySurface;
         private EGL10 mEgl;
-        private EGLContext mEglContext;
 
         private EGLDisplay mEGLDisplay = EGL10.EGL_NO_DISPLAY;
         private EGLContext mEGLContext = EGL10.EGL_NO_CONTEXT;
         private EGLSurface mEGLSurface = EGL10.EGL_NO_SURFACE;
+        private EGLConfig  mEGLConfig  = null;
         int mWidth;
         int mHeight;
 
@@ -762,13 +770,14 @@ public class Mp4Decoder {
          * new EGL context and surface will be made current.  Creates a Surface that can be passed
          * to MediaCodec.configure().
          */
-        public CodecOutputSurface(int width, int height) {
+        public CodecOutputSurface(int width, int height, Surface displaySurface) {
             if (width <= 0 || height <= 0) {
                 throw new IllegalArgumentException();
             }
             mEgl = (EGL10) EGLContext.getEGL();
             mWidth = width;
             mHeight = height;
+            mDisplaySurface = displaySurface;
 
             eglSetup();
             makeCurrent();
@@ -782,7 +791,7 @@ public class Mp4Decoder {
             mTextureRender = new STextureRender();
             mTextureRender.surfaceCreated();
 
-            Log.d(TAG, "textureID=" + mTextureRender.getTextureId());
+            Log.i(TAG, "texture id = " + mTextureRender.getTextureId());
             mSurfaceTexture = new SurfaceTexture(mTextureRender.getTextureId());
 
             // This doesn't work if this object is created on the thread that CTS started for
@@ -837,6 +846,7 @@ public class Mp4Decoder {
                     numConfigs)) {
                 throw new RuntimeException("unable to find RGB888+recordable ES2 EGL config");
             }
+            mEGLConfig = configs[0];
 
             // Configure context for OpenGL ES 2.0.
             int[] attrib_list = {
@@ -845,19 +855,27 @@ public class Mp4Decoder {
             };
 
             EGLContext sharedContext = SharedEGLContext.GetEGLContext();
-            mEGLContext = mEgl.eglCreateContext(mEGLDisplay, configs[0], sharedContext, attrib_list);
+            mEGLContext = mEgl.eglCreateContext(mEGLDisplay, mEGLConfig, sharedContext, attrib_list);
             checkEglError("eglCreateContext");
             if (mEGLContext == null) {
                 throw new RuntimeException("null context");
             }
 
-            // Create a pbuffer surface.
-            int[] surfaceAttribs = {
-                    EGL10.EGL_WIDTH, mWidth,
-                    EGL10.EGL_HEIGHT, mHeight,
-                    EGL10.EGL_NONE
-            };
-            mEGLSurface = mEgl.eglCreatePbufferSurface(mEGLDisplay, configs[0], surfaceAttribs);
+            if (mDisplaySurface != null) {
+                int[] format = new int[1];
+                if (mEgl.eglGetConfigAttrib(mEGLDisplay, mEGLConfig, EGL_NATIVE_VISUAL_ID, format)) {
+                    final int[] surfaceAttribs = {EGL10.EGL_NONE};
+                    mEGLSurface = mEgl.eglCreateWindowSurface(mEGLDisplay, mEGLConfig, mDisplaySurface, surfaceAttribs);
+                }
+            } else {
+                // Create a pbuffer surface.
+                int[] surfaceAttribs = {
+                        EGL10.EGL_WIDTH, mWidth,
+                        EGL10.EGL_HEIGHT, mHeight,
+                        EGL10.EGL_NONE
+                };
+                mEGLSurface = mEgl.eglCreatePbufferSurface(mEGLDisplay, mEGLConfig, surfaceAttribs);
+            }
             checkEglError("eglCreatePbufferSurface");
             if (mEGLSurface == null) {
                 throw new RuntimeException("surface was null");
@@ -889,6 +907,7 @@ public class Mp4Decoder {
             mTextureRender = null;
             mSurface = null;
             mSurfaceTexture = null;
+            mDisplaySurface = null;
         }
 
         /**
@@ -905,6 +924,10 @@ public class Mp4Decoder {
          */
         public Surface getSurface() {
             return mSurface;
+        }
+
+        public Surface getDisplaySurface() {
+            return mDisplaySurface;
         }
 
         public int getTextureId() {
@@ -952,13 +975,32 @@ public class Mp4Decoder {
          * @param invert if set, render the image with Y inverted (0,0 in top left)
          */
         public void drawImage(boolean invert) {
+            if (mDisplaySurface != null) {
+                int[] width = new int[1];
+                int[] height = new int[1];
+                if (mEgl.eglQuerySurface(mEGLDisplay, mEGLSurface, EGL10.EGL_WIDTH, width)
+                    && mEgl.eglQuerySurface(mEGLDisplay, mEGLSurface, EGL10.EGL_HEIGHT, height)) {
+                    int x = 0, y = 0;
+                    if (width[0] * mHeight > height[0] * mWidth) {
+                        float croppedWidth = height[0] * mWidth / (float)mHeight;
+                        x = (int)((width[0] - croppedWidth) / 2 + 0.5f);
+                        width[0] -= x * 2;
+                    } else if (width[0] * mHeight < height[0] * mWidth) {
+                        int croppedHeight = (int)(width[0] * mHeight / (float)mWidth + 0.5f);
+                        y = (int)((height[0] - croppedHeight) / 2 + 0.5f);
+                        height[0] -= y * 2;
+                    }
+                    GLES20.glViewport(x, y, width[0], height[0]);
+                }
+            }
             mTextureRender.drawFrame(mSurfaceTexture, invert);
+            mEgl.eglSwapBuffers(mEGLDisplay, mEGLSurface);
         }
 
         // SurfaceTexture callback
         @Override
         public void onFrameAvailable(SurfaceTexture st) {
-            Log.i(TAG, "new frame available");
+            Log.d(TAG, "new frame available");
             synchronized (mFrameSyncObject) {
                 if (mFrameAvailable) {
                     throw new RuntimeException("mFrameAvailable already set, frame could be dropped");
