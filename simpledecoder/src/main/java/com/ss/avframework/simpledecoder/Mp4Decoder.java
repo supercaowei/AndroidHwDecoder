@@ -693,8 +693,8 @@ public class Mp4Decoder {
 
     private boolean CompareClockAndSleep(long ptsUs, SyncClock currentClock, SyncClock primaryClock) throws Exception {
         long sysTimeMs = System.currentTimeMillis();
-        if (primaryClock.Uninitialized()) {
-            if (currentClock == primaryClock) {
+        if (currentClock == null || primaryClock == null || primaryClock.Uninitialized()) {
+            if (currentClock == primaryClock && primaryClock != null) {
                 primaryClock.ptsUs = ptsUs;
                 primaryClock.sysTimeMs = sysTimeMs;
                 return false;
